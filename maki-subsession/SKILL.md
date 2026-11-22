@@ -20,8 +20,11 @@ Use one when you need:
 ```bash
 cd <workdir> && maki -p --yolo -m <provider/model-id> --output-format json \
   [--max-turns N] [--disallowed-tools <tools>] \
-  "<prompt>" 2>/dev/null > /tmp/subsession-<name>.json
+  "<prompt>" > /tmp/subsession-<name>.json 2> /tmp/subsession-<name>.err
 ```
+
+Keep stderr in a file: it holds the session id, which you need to resume a
+run that died before writing its JSON.
 
 - `-p`: non-interactive; runs the prompt and exits.
 - `--yolo` is required. Without it, the first permission prompt blocks the run forever.
@@ -33,8 +36,11 @@ cd <workdir> && maki -p --yolo -m <provider/model-id> --output-format json \
 - Read-only roles (review, research, opinion): add
   `--disallowed-tools write,edit,multiedit,edit_lines` and say "do not modify files"
   in the prompt. Also tell it whether it may run commands that have side effects.
-- Long runs: launch with the bash tool's `background: true` and set a
-  `timeout`. Then end your turn instead of polling.
+- Long runs: make the `maki -p ...` line itself the bash tool's command, with
+  `background: true` and a `timeout` (e.g. 5400). Then end your turn instead
+  of polling. Never wrap it as `( maki ... ) &` or `nohup ... &`: the tool
+  returns at once, you get no completion signal, and the detached process can
+  die silently.
 - Parallel subsessions that write files need separate workdirs (e.g. one git
   worktree each). Read-only ones can share a directory.
 
@@ -48,9 +54,15 @@ python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["is_error"]
 ```
 
 - Check `is_error` and `subtype` before trusting `result`.
+- An empty JSON file with no `maki -p` left in `ps` means the run died. Take
+  the session id from the `.err` file and resume it (see below).
+- A writer that died or returned an empty result may still have left edits:
+  check `git status` in its workdir before relaunching.
 - The result is a report, not proof. Check any claim that matters yourself
   (files changed, commands that passed, facts quoted).
-- Relay what the subsession found to the user. They cannot see it.
+- Tell the user the outcome in a line or two: the verdict (for a review, the
+  finding count, or whether another round is needed) and the next step. Give
+  details only when the user must decide something or asks for them.
 
 ## Follow up in the same subsession
 
